@@ -1,3 +1,122 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background-color: theme("colors.soya.paper");
+    color: theme("colors.soya.ink");
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-soya-line bg-white/70 backdrop-blur-sm shadow-[0_1px_2px_rgba(43,36,25,0.04)];
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-btn px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-soya-accent text-soya-ink hover:bg-[#cc941f];
+  }
+  .btn-ghost {
+    @apply btn border border-soya-line bg-white/60 text-soya-ink hover:bg-white;
+  }
+  .btn-danger {
+    @apply btn border border-red-300 bg-red-50 text-red-700 hover:bg-red-100;
+  }
+  .input {
+    @apply w-full rounded-btn border border-soya-line bg-white px-3 py-2 text-sm text-soya-ink placeholder:text-soya-muted/70 focus:border-soya-accent focus:outline-none focus:ring-2 focus:ring-soya-accent/30;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-wider text-soya-muted;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full border border-soya-line bg-white/80 px-2 py-0.5 text-[11px] font-medium text-soya-muted;
+  }
+  .table-row {
+    @apply border-b border-soya-line/60 last:border-0;
+  }
+}
+
+@layer utilities {
+  /* Blinking caret used while assistant message is streaming in. */
+  .cursor-blink::after {
+    content: "▋";
+    margin-left: 2px;
+    color: theme("colors.soya.accent");
+    animation: soya-blink 1s steps(2, start) infinite;
+  }
+  @keyframes soya-blink {
+    to {
+      visibility: hidden;
+    }
+  }
+}
+
+/* Markdown styles inside chat bubbles. We use a tiny subset rather than
+   pulling in @tailwindcss/typography. */
+.md p {
+  margin: 0.25rem 0;
+}
+.md p:first-child {
+  margin-top: 0;
+}
+.md p:last-child {
+  margin-bottom: 0;
+}
+.md ul,
+.md ol {
+  margin: 0.35rem 0 0.35rem 1.25rem;
+}
+.md ul {
+  list-style: disc;
+}
+.md ol {
+  list-style: decimal;
+}
+.md code {
+  font-family: theme("fontFamily.mono");
+  font-size: 0.85em;
+  background: rgba(43, 36, 25, 0.08);
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+}
+.md pre {
+  font-family: theme("fontFamily.mono");
+  background: #2b2419;
+  color: #f3eddc;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+.md pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+.md a {
+  color: theme("colors.soya.accent");
+  text-decoration: underline;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.9em;
+}
+.md th,
+.md td {
+  border: 1px solid theme("colors.soya.line");
+  padding: 0.25rem 0.5rem;
+}

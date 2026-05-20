@@ -4,28 +4,27 @@
 `soyaos` binary via `go:embed`.
 
 > If you are a user, you don't install Studio. You run `soyaos serve` and
-> open <http://localhost:8717/studio/>. The binary embeds a pre-built copy
-> of the `dist/` folder from this repo.
+> open <http://localhost:7474/>. The binary embeds a pre-built copy of
+> the `dist/` folder from this repo.
 
 ## Stack
 
 - [Vite](https://vitejs.dev) for builds (no SSR — pure static SPA).
-- [React 18](https://react.dev) with `react-router-dom` (HashRouter, so
-  the build is path-agnostic and embeddable).
-- [Tailwind CSS](https://tailwindcss.com) with the SoyaOS palette.
+- [React 18](https://react.dev) with `react-router-dom` v6 (`BrowserRouter`).
+- [Tailwind CSS](https://tailwindcss.com) with the SoyaOS warm palette.
+- [react-markdown](https://github.com/remarkjs/react-markdown) +
+  [remark-gfm](https://github.com/remarkjs/remark-gfm) for chat bubbles.
 - [Bun](https://bun.sh) for local dev; `npm` works too.
 
-## Alpha surfaces
+## Pages
 
-| Route       | Status         |
-| ----------- | -------------- |
-| `/`         | Overview cards |
-| `/agents`   | Agent list     |
-| `/scopes`   | Scope stream   |
-| `/keys`     | API key mgmt   |
-
-Everything is wired to placeholder data in `0.1.0-alpha.0`. Real RPCs
-(via `@soyaos/sdk`'s `ControlClient`) land in `0.1.0-alpha.1`.
+| Route      | What it does                                                  | Wired to                                            |
+| ---------- | ------------------------------------------------------------- | --------------------------------------------------- |
+| `/`        | Version / edition / agents / BYOK stats + quick links          | `GET /healthz?format=json`, `GET /v1/models`         |
+| `/chat`    | OpenAI-compat chat with SSE streaming, markdown, token counts | `POST /v1/chat/completions` (`stream: true`)        |
+| `/agents`  | Registered agents with one-click "try in chat"                | `GET /control/v0/agents` (fallback `GET /v1/agents`)|
+| `/keys`    | API key CRUD UI (demo state only, server endpoint pending)    | mock (planned `/control/v0/auth/keys`)              |
+| `/trace`   | Recent inference traces (mock, real source: SoyaScope)        | mock (planned `/control/v0/scope/recent`)           |
 
 ## Local dev
 
@@ -36,6 +35,11 @@ bun run dev          # http://localhost:5173
 # build for production
 bun run build        # writes dist/
 ```
+
+`bun run dev` proxies `/v1`, `/control` and `/healthz` to
+`http://127.0.0.1:7474`, so you can run a SoyaOS binary alongside Vite
+and the SPA will talk to it directly with no CORS hassle. See
+`vite.config.ts`.
 
 ## 中文 Quickstart
 
@@ -51,17 +55,18 @@ bun run dev          # 等价于 npm install && npm run dev
 
 ## How this gets shipped
 
-A GitHub Action in `soyaos/soyaos` runs `bun run build` on tag bumps and
-copies the resulting `dist/` into `soyaos/soyaos/web/dist/`. The Go side
-declares:
+`soyaos/soyaos` ships a pre-built copy of this repo's `dist/` via Go's
+`//go:embed web/dist/*`. Two practical consequences:
 
-```go
-//go:embed web/dist
-var studioFS embed.FS
-```
-
-The HashRouter + `base: "./"` settings ensure the build keeps working
-regardless of where in the URL tree `soyaos serve` decides to mount it.
+1. **`dist/` is committed.** That is the explicit trade-off: a slightly
+   bigger git history in exchange for a release-self-contained binary.
+   See `.gitignore` for the comment.
+2. **`vite.config.ts` sets `base: "./"`.** All assets in `index.html` are
+   referenced via relative URLs, so deep links such as `/chat` survive a
+   page reload regardless of which prefix the Go side mounts the SPA at.
+   The Go server must fall back unknown GET routes (other than `/v1/*`,
+   `/control/*`, `/healthz`) to `index.html` for client-side routing to
+   work.
 
 ## License
 
