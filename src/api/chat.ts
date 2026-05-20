@@ -12,6 +12,14 @@ export interface Usage {
 }
 
 export interface ChatStreamEvents {
+  /**
+   * Called as soon as the HTTP response opens with a 2xx status, before the
+   * first SSE frame is read. UIs use this to flip from "dialing the
+   * upstream" to "waiting for first token" — upstreams like DashScope can
+   * spend tens of seconds buffering before the first delta lands, so the
+   * distinction matters for perceived responsiveness.
+   */
+  onOpen?(): void;
   /** Called every time more text arrives. `delta` is the new chunk only. */
   onDelta(delta: string): void;
   /** Called once at the end. usage may be undefined if not provided. */
@@ -58,6 +66,7 @@ export function streamChat(
         );
       }
 
+      events.onOpen?.();
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";

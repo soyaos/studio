@@ -39,6 +39,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMessageVM[]>([]);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const sessionRef = useRef<{ cancelled: boolean } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -92,41 +93,75 @@ export default function Chat() {
     history.push({ role: "user", content: userMsg.content });
 
     const assistantId = newId();
+    const startedAt = Date.now();
     const assistantMsg: ChatMessageVM = {
       id: assistantId,
       role: "assistant",
       content: "",
       streaming: streaming,
+      streamState: streaming ? "dialing" : undefined,
+      startedAt,
     };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
     setBusy(true);
 
     if (streaming) {
+      // Per-send session captured by closure. Stop flips `cancelled` to true,
+      // and every async callback below checks it BEFORE mutating state — so
+      // any chunk that lands after the user pressed Stop is dropped at the
+      // UI layer, regardless of whether the network actually managed to
+      // tear down the upstream request in time.
+      const session = { cancelled: false };
+      sessionRef.current = session;
+
       const controller = streamChat(
         { model, messages: history },
         {
-          onDelta(delta) {
+          onOpen() {
+            if (session.cancelled) return;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
-                  ? { ...m, content: m.content + delta }
+                  ? { ...m, streamState: "waiting" }
+                  : m,
+              ),
+            );
+          },
+          onDelta(delta) {
+            if (session.cancelled) return;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: m.content + delta,
+                      streamState: "streaming",
+                    }
                   : m,
               ),
             );
           },
           onDone(usage) {
+            if (session.cancelled) return;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
-                  ? { ...m, streaming: false, usage }
+                  ? {
+                      ...m,
+                      streaming: false,
+                      streamState: undefined,
+                      usage,
+                    }
                   : m,
               ),
             );
             setBusy(false);
             abortRef.current = null;
+            sessionRef.current = null;
           },
           onError(err) {
+            if (session.cancelled) return;
             setMessages((prev) => [
               ...prev.filter((m) => m.id !== assistantId),
               {
@@ -137,6 +172,7 @@ export default function Chat() {
             ]);
             setBusy(false);
             abortRef.current = null;
+            sessionRef.current = null;
           },
         },
       );
@@ -193,11 +229,27 @@ export default function Chat() {
   }, [canSend, input, messages, model, streaming, systemPrompt]);
 
   const stop = useCallback(() => {
+    // 1. Flip the session flag so every in-flight onDelta/onDone callback
+    //    bails out before touching state. This works even if the network
+    //    abort below propagates slowly or if a chunk is already in the
+    //    reader's buffer — UI stops the instant the user clicks.
+    if (sessionRef.current) sessionRef.current.cancelled = true;
+    sessionRef.current = null;
+
+    // 2. Tear down the actual network so we stop billing tokens upstream
+    //    (the AbortController triggers fetch() → ReadableStream cancel).
     abortRef.current?.abort();
     abortRef.current = null;
+
+    // 3. Mark the visible bubble as cancelled so the user sees [stopped]
+    //    instead of a half-finished message that never resumes.
     setBusy(false);
     setMessages((prev) =>
-      prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+      prev.map((m) =>
+        m.streaming
+          ? { ...m, streaming: false, streamState: "cancelled" }
+          : m,
+      ),
     );
   }, []);
 
