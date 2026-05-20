@@ -88,11 +88,22 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         </div>
         {message.usage ? (
           <span
-            className={`text-[11px] text-soya-muted ${
-              isUser ? "text-right" : ""
+            className={`text-[11px] text-soya-muted flex items-center gap-1.5 ${
+              isUser ? "justify-end" : ""
             }`}
           >
             {formatUsage(message.usage)}
+            {message.usage.finish_reason &&
+            message.usage.finish_reason !== "stop" ? (
+              <span
+                className={`inline-block rounded-full px-2 py-[1px] text-[10px] uppercase tracking-wider ${finishReasonClass(
+                  message.usage.finish_reason,
+                )}`}
+                title={describeFinishReason(message.usage.finish_reason)}
+              >
+                {message.usage.finish_reason}
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>
@@ -141,4 +152,30 @@ function formatUsage(u: Usage): string {
     parts.push(`completion ${u.completion_tokens}`);
   if (u.total_tokens != null) parts.push(`total ${u.total_tokens}`);
   return parts.join(" · ") || "";
+}
+
+function finishReasonClass(reason: string): string {
+  switch (reason) {
+    case "length":
+      return "bg-amber-100 text-amber-800";
+    case "content_filter":
+      return "bg-red-100 text-red-700";
+    case "error":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-soya-line/70 text-soya-muted";
+  }
+}
+
+function describeFinishReason(reason: string): string {
+  switch (reason) {
+    case "length":
+      return "Output cut off by max_tokens — the upstream stopped because it hit a token limit, not because it finished. Increase max_tokens or split the request.";
+    case "content_filter":
+      return "Upstream refused to continue (content policy).";
+    case "error":
+      return "Upstream stream errored mid-flight (e.g. timeout or network reset). Try again or pick a different upstream.";
+    default:
+      return `Upstream stopped with finish_reason=${reason}.`;
+  }
 }

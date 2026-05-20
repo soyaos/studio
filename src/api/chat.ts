@@ -9,6 +9,13 @@ export interface Usage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  /**
+   * Set when the upstream finish_reason ≠ "stop" — e.g. "length" when
+   * max_tokens was hit, "content_filter" when the model refused, "error"
+   * when SoyaOS gateway saw the upstream stream fail. UIs can render a
+   * pill next to the usage line so the truncation is obvious.
+   */
+  finish_reason?: string;
 }
 
 export interface ChatStreamEvents {
@@ -34,6 +41,13 @@ interface StreamChunk {
     finish_reason?: string | null;
   }>;
   usage?: Usage;
+  /**
+   * SoyaOS gateway emits this when the upstream stream fails mid-flight
+   * (e.g. context deadline, network reset). OpenAI itself also occasionally
+   * surfaces `error` at the top level on stream interruptions. Either way
+   * the client should treat it as a hard fail, not a silent done.
+   */
+  error?: { message: string; type?: string; code?: string };
 }
 
 /**
@@ -42,7 +56,15 @@ interface StreamChunk {
  * `stream: true` protocol that SoyaOS speaks.
  */
 export function streamChat(
-  args: { model: string; messages: ChatMessage[] },
+  args: {
+    model: string;
+    messages: ChatMessage[];
+    /** Hard cap on response length. Forwarded to the upstream OpenAI-Compat
+     *  /v1/chat/completions max_tokens. Omit for upstream-default. */
+    maxTokens?: number;
+    /** 0..1 (or 0..2 for some upstreams). Omit for upstream-default. */
+    temperature?: number;
+  },
   events: ChatStreamEvents,
 ): AbortController {
   const controller = new AbortController();
@@ -50,14 +72,17 @@ export function streamChat(
   (async () => {
     let lastUsage: Usage | undefined;
     try {
+      const body: Record<string, unknown> = {
+        model: args.model,
+        messages: args.messages,
+        stream: true,
+      };
+      if (args.maxTokens && args.maxTokens > 0) body.max_tokens = args.maxTokens;
+      if (args.temperature != null) body.temperature = args.temperature;
       const res = await apiFetch("/v1/chat/completions", {
         method: "POST",
         signal: controller.signal,
-        body: JSON.stringify({
-          model: args.model,
-          messages: args.messages,
-          stream: true,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
@@ -95,10 +120,29 @@ export function streamChat(
             }
             try {
               const chunk = JSON.parse(payload) as StreamChunk;
-              const delta = chunk.choices?.[0]?.delta?.content;
+              if (chunk.error) {
+                // Structured upstream-error frame from SoyaOS gateway.
+                // Surface it instead of letting the loop fall through to
+                // a phantom onDone — otherwise a 90s timeout looks like
+                // a complete short answer.
+                throw new Error(chunk.error.message);
+              }
+              const choice = chunk.choices?.[0];
+              const delta = choice?.delta?.content;
               if (delta) events.onDelta(delta);
               if (chunk.usage) lastUsage = chunk.usage;
-            } catch {
+              // finish_reason="length" / "content_filter" / "error" all
+              // mean the response is incomplete — let the UI know via
+              // onDone so it can decorate the bubble accordingly.
+              if (choice?.finish_reason && choice.finish_reason !== "stop") {
+                events.onDone({ ...lastUsage, finish_reason: choice.finish_reason });
+                return;
+              }
+            } catch (err) {
+              if (err instanceof Error && err.message) {
+                events.onError(err);
+                return;
+              }
               // Ignore individual frame parse errors — the stream may
               // still be recoverable.
             }

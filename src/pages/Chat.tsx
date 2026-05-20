@@ -16,6 +16,14 @@ import ModelPicker from "../components/ModelPicker";
 
 const SYSTEM_KEY = "soya.studio.systemPrompt";
 const STREAM_KEY = "soya.studio.streaming";
+const MAX_TOKENS_KEY = "soya.studio.maxTokens";
+
+const MAX_TOKENS_PRESETS = [
+  { label: "short · 256", value: 256 },
+  { label: "medium · 1024", value: 1024 },
+  { label: "long · 4096", value: 4096 },
+  { label: "max · ∞", value: 0 },
+] as const;
 
 function newId(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -35,6 +43,12 @@ export default function Chat() {
     if (typeof window === "undefined") return true;
     return window.localStorage.getItem(STREAM_KEY) !== "off";
   });
+  const [maxTokens, setMaxTokens] = useState<number>(() => {
+    if (typeof window === "undefined") return 1024;
+    const raw = window.localStorage.getItem(MAX_TOKENS_KEY);
+    const n = raw == null ? 1024 : Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 1024;
+  });
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessageVM[]>([]);
   const [busy, setBusy] = useState(false);
@@ -53,6 +67,10 @@ export default function Chat() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(STREAM_KEY, streaming ? "on" : "off");
   }, [streaming]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(MAX_TOKENS_KEY, String(maxTokens));
+  }, [maxTokens]);
 
   // Reflect ?model= back into the URL when the user changes it.
   useEffect(() => {
@@ -116,7 +134,11 @@ export default function Chat() {
       sessionRef.current = session;
 
       const controller = streamChat(
-        { model, messages: history },
+        {
+          model,
+          messages: history,
+          maxTokens: maxTokens > 0 ? maxTokens : undefined,
+        },
         {
           onOpen() {
             if (session.cancelled) return;
@@ -191,6 +213,7 @@ export default function Chat() {
               model,
               messages: history,
               stream: false,
+              ...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
             }),
           });
           if (!res.ok) {
@@ -226,7 +249,7 @@ export default function Chat() {
         }
       })();
     }
-  }, [canSend, input, messages, model, streaming, systemPrompt]);
+  }, [canSend, input, messages, model, streaming, systemPrompt, maxTokens]);
 
   const stop = useCallback(() => {
     // 1. Flip the session flag so every in-flight onDelta/onDone callback
@@ -281,7 +304,22 @@ export default function Chat() {
             on the connected SoyaOS gateway.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-soya-muted">
+            <span className="uppercase tracking-wider">max_tokens</span>
+            <select
+              className="bg-transparent border border-soya-line rounded-btn px-2 py-1 text-xs hover:border-soya-accent focus:outline-none focus:ring-2 focus:ring-soya-accent/40"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(Number.parseInt(e.target.value, 10) || 0)}
+              title="Cap response length to avoid runaway long generations. ∞ uses the upstream default (DashScope qwen will keep going for minutes on broad prompts)."
+            >
+              {MAX_TOKENS_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex items-center gap-2 text-xs text-soya-muted">
             <input
               type="checkbox"
