@@ -12,7 +12,13 @@ bun.lockb
 npm-debug.log*
 
 # Vite outputs
-dist/
+#
+# NOTE: dist/ is intentionally NOT ignored. soyaos/soyaos uses
+#   //go:embed web/dist/*
+# to ship the compiled SPA inside the main binary, and that import
+# is satisfied by copying THIS repo's committed dist/ into the Go
+# tree. CI keeps the two in sync; the trade-off (a slightly bigger
+# git history) is accepted in exchange for a self-contained release.
 dist-ssr/
 *.local
 
