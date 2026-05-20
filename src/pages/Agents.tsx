@@ -27,7 +27,7 @@ export default function Agents() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
           <p className="text-sm text-soya-muted mt-1">
-            Pulled from <code className="font-mono text-xs">/control/v0/agents</code>.
+            Pulled from <code className="font-mono text-xs">/v1/agents</code>.
           </p>
         </div>
         <span className="badge">

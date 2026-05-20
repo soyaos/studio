@@ -16,15 +16,14 @@ interface AgentListShape {
 }
 
 export async function listAgents(): Promise<Agent[]> {
-  // Try control RPC first, fall back to the OpenAI-compat /v1/agents alias
-  // some builds expose. Whichever returns first wins.
-  try {
-    const res = await apiJson<AgentListShape | Agent[]>("/control/v0/agents");
-    return normalize(res);
-  } catch {
-    const res = await apiJson<AgentListShape | Agent[]>("/v1/agents");
-    return normalize(res);
-  }
+  // Studio is served from the data plane (:7474), so fetch must be same-
+  // origin. The control RPC at :7475 is loopback-only and unreachable
+  // from the browser; the old /control/v0/agents path was returning the
+  // SPA fallback HTML and tripping JSON.parse. GET /v1/agents is the
+  // SoyaOS-superset data-plane endpoint that returns the same kernel
+  // agent list with descriptions (see pkg/openaicompat.handleAgentList).
+  const res = await apiJson<AgentListShape | Agent[]>("/v1/agents");
+  return normalize(res);
 }
 
 function normalize(res: AgentListShape | Agent[]): Agent[] {
