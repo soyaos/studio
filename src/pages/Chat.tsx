@@ -282,6 +282,23 @@ export default function Chat() {
   }, [stop]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME guard: when a Chinese / Japanese / Korean input method is composing
+    // candidate text, Enter must commit the candidate, NOT submit the form.
+    // Browsers signal this two ways and we check both because each one alone
+    // misses cases:
+    //
+    //   1. e.nativeEvent.isComposing — set by every modern browser DURING
+    //      composition. On the very last Enter that commits the candidate
+    //      Chrome/macOS still reports isComposing=true, so this alone is
+    //      already enough on Chrome but Safari occasionally reports false
+    //      one keydown too early.
+    //   2. e.keyCode === 229 — the legacy "IME process" sentinel from the
+    //      W3C UI Events spec. Older Safari/Firefox emit it as a final
+    //      fallback even when isComposing has already flipped.
+    //
+    // Together they cover Chrome / Safari / Firefox / Edge on macOS and
+    // Windows, mainland Chinese, Japanese, and Korean IMEs.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
