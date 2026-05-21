@@ -1,0 +1,142 @@
+name: Sync dist to soyaos/soyaos
+
+# When a studio Release is published, rebuild dist/ for that exact tag
+# and open a PR against the main soyaos/soyaos repo bumping
+# internal/studio/dist/. The main repo //go:embeds that directory, so the
+# binary picks up the new Studio UI on its next `make build`.
+#
+# Token: requires a fine-grained PAT (or GitHub App installation token)
+# stored in this repo's SOYAOS_REPO_PAT secret, with:
+#   - contents: write on soyaos/soyaos
+#   - pull-requests: write on soyaos/soyaos
+# A by:human follow-up issue tracks creating + rotating this token. The
+# guard step below makes the workflow a clean no-op when the secret is
+# absent, so authoring this YAML doesn't break studio releases.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Studio tag to sync (e.g. v0.1.0). Defaults to latest release."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-sync-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Build dist and open sync PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard — require SOYAOS_REPO_PAT secret
+        id: guard
+        env:
+          PAT: ${{ secrets.SOYAOS_REPO_PAT }}
+        run: |
+          if [ -z "${PAT}" ]; then
+            echo "::warning::SOYAOS_REPO_PAT not set — skipping cross-repo sync. Add the secret to enable."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve release tag
+        if: steps.guard.outputs.skip != 'true'
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ inputs.tag }}"
+            if [ -z "${TAG}" ]; then
+              TAG=$(gh release view --json tagName -q .tagName)
+            fi
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Resolved studio tag: ${TAG}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout studio @ release tag
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Setup Bun
+        if: steps.guard.outputs.skip != 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build dist
+        if: steps.guard.outputs.skip != 'true'
+        run: bun run build
+
+      - name: Checkout soyaos/soyaos
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: soyaos/soyaos
+          token: ${{ secrets.SOYAOS_REPO_PAT }}
+          path: main-repo
+          fetch-depth: 1
+
+      - name: Copy dist into main repo
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p main-repo/internal/studio/dist
+          rsync -av --delete dist/ main-repo/internal/studio/dist/
+
+      - name: Generate PR body
+        if: steps.guard.outputs.skip != 'true'
+        id: body
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          {
+            echo "Auto-sync of \`internal/studio/dist/\` produced by"
+            echo "[soyaos/studio@${TAG}](https://github.com/soyaos/studio/releases/tag/${TAG})."
+            echo
+            echo "Diff is restricted to \`internal/studio/dist/\` so reviewers can"
+            echo "verify the embedded UI changes match the studio release notes."
+            echo
+            echo "After merge, the next \`make build\` on soyaos/soyaos picks up the"
+            echo "new Studio bundle via the existing \`//go:embed\` wiring."
+          } > pr-body.md
+          {
+            echo 'body<<EOF'
+            cat pr-body.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create / update PR on soyaos/soyaos
+        if: steps.guard.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          path: main-repo
+          token: ${{ secrets.SOYAOS_REPO_PAT }}
+          branch: chore/studio-sync-${{ steps.tag.outputs.tag }}
+          base: main
+          delete-branch: true
+          commit-message: "chore(studio): sync dist ${{ steps.tag.outputs.tag }}"
+          title: "chore(studio): sync dist ${{ steps.tag.outputs.tag }}"
+          body: ${{ steps.body.outputs.body }}
+          labels: |
+            auto-sync
+            studio
+          add-paths: |
+            internal/studio/dist/**

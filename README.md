@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/logo.png" alt="SoyaOS" width="120" height="120" />
+</p>
+
 # studio
 
 **SoyaOS Studio** — the control-plane web UI shipped *inside* the main
@@ -67,6 +71,22 @@ bun run dev          # 等价于 npm install && npm run dev
    The Go server must fall back unknown GET routes (other than `/v1/*`,
    `/control/*`, `/healthz`) to `index.html` for client-side routing to
    work.
+
+## Deploy
+
+The `.github/workflows/sync-to-main.yml` action listens for studio
+GitHub Releases and opens a sync PR against `soyaos/soyaos` that
+bumps `internal/studio/dist/`. The main repo `//go:embed`s that
+directory, so merging the auto-PR is what ships a new Studio bundle.
+
+To enable cross-repo PR creation, set one secret on this repo:
+
+| Secret             | Where it goes                                   | Permissions                                                    |
+| ------------------ | ----------------------------------------------- | -------------------------------------------------------------- |
+| `SOYAOS_REPO_PAT`  | Settings → Secrets and variables → Actions      | `contents: write` + `pull-requests: write` on `soyaos/soyaos`. |
+
+When the secret is absent, the workflow no-ops with a warning — it
+never blocks a studio release.
 
 ## License
 
