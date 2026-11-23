@@ -6,11 +6,9 @@ const GATEWAY = "http://127.0.0.1:7474";
 
 export default defineConfig({
   plugins: [react()],
-  // Keep paths relative so the build can be embedded behind any prefix
-  // by `soyaos serve` via go:embed. Critical for SPA fallback to work:
-  // index.html will reference JS/CSS via "./assets/..." rather than
-  // "/assets/...", so deep links like /chat reload correctly.
-  base: "./",
+  // The Go gateway mounts Studio at /. Root-relative asset URLs also work
+  // when a client-side route is opened directly or has a trailing slash.
+  base: "/",
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -18,7 +18,13 @@ export default function Layout({ children }: { children: ReactNode }) {
             to="/"
             className="flex items-center gap-2 font-semibold tracking-tight"
           >
-            <span className="inline-block h-3 w-3 rounded-full bg-soya-accent" />
+            <img
+              src="/logo.png"
+              alt=""
+              width={32}
+              height={32}
+              className="h-8 w-8 shrink-0 rounded-md object-contain"
+            />
             <span>SoyaOS Studio</span>
             <span className="badge ml-2">alpha</span>
           </NavLink>

@@ -65,9 +65,9 @@ bun run dev          # 等价于 npm install && npm run dev
 1. **`dist/` is committed.** That is the explicit trade-off: a slightly
    bigger git history in exchange for a release-self-contained binary.
    See `.gitignore` for the comment.
-2. **`vite.config.ts` sets `base: "./"`.** All assets in `index.html` are
-   referenced via relative URLs, so deep links such as `/chat` survive a
-   page reload regardless of which prefix the Go side mounts the SPA at.
+2. **`vite.config.ts` sets `base: "/"`.** Studio is mounted at the gateway
+   root. Scripts, styles, and icons use root-relative URLs so deep links
+   such as `/chat` and `/chat/` load the same assets on a page reload.
    The Go server must fall back unknown GET routes (other than `/v1/*`,
    `/control/*`, `/healthz`) to `index.html` for client-side routing to
    work.
